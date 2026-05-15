@@ -61,9 +61,7 @@ AIDER_NAME_TO_HF_IDS: dict[str, list[str]] = {
 }
 
 
-_PASS_RATE_RE = re.compile(
-    r"pass_rate[_-]?2[:\s]+(\d+(?:\.\d+)?)", re.IGNORECASE
-)
+_PASS_RATE_RE = re.compile(r"pass_rate[_-]?2[:\s]+(\d+(?:\.\d+)?)", re.IGNORECASE)
 _MODEL_RE = re.compile(r"^- model[:\s]+(.+)$", re.MULTILINE)
 
 
@@ -90,12 +88,8 @@ def _parse_yaml_lite(text: str) -> list[tuple[str, float]]:
     # Split into records starting with "- "
     records = re.split(r"\n(?=-\s+\w)", text)
     for rec in records:
-        m_model = re.search(
-            r"^\s*model[:\s]+(.+?)$", rec, re.MULTILINE | re.IGNORECASE
-        )
-        m_rate = re.search(
-            r"pass_rate_2[:\s]+(\d+(?:\.\d+)?)", rec, re.IGNORECASE
-        )
+        m_model = re.search(r"^\s*model[:\s]+(.+?)$", rec, re.MULTILINE | re.IGNORECASE)
+        m_rate = re.search(r"pass_rate_2[:\s]+(\d+(?:\.\d+)?)", rec, re.IGNORECASE)
         if not m_model or not m_rate:
             continue
         name = m_model.group(1).strip().strip("\"'")

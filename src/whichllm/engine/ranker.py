@@ -68,12 +68,12 @@ def _family_selection_key(
 # combined with size, quant penalty, etc. The widest gap is between "direct"
 # (independent leaderboard) and "self_reported" (uploader card claim).
 _SOURCE_WEIGHTS: dict[str, float] = {
-    "direct":        0.62,
-    "base_model":    0.55,
-    "variant":       0.50,
-    "line_interp":   0.40,
+    "direct": 0.62,
+    "base_model": 0.55,
+    "variant": 0.50,
+    "line_interp": 0.40,
     "self_reported": 0.30,
-    "none":          0.0,
+    "none": 0.0,
 }
 
 
@@ -235,15 +235,15 @@ _REPACKAGER_ORGS = frozenset(
 # they cannot occupy ranking slots regardless of download counts.
 _EXCLUDED_ORGS = frozenset(
     {
-        "openai-community",          # gpt2 family, 2019 research
-        "distilbert",                # distilgpt2 etc.
-        "facebook",                  # opt-125m research scaffolds
-        "EleutherAI",                # pythia/gpt-neo research
-        "trl-internal-testing",      # TRL CI fixtures
-        "hmellor",                   # random tiny test models
-        "HuggingFaceH4",             # often staging / fixtures
+        "openai-community",  # gpt2 family, 2019 research
+        "distilbert",  # distilgpt2 etc.
+        "facebook",  # opt-125m research scaffolds
+        "EleutherAI",  # pythia/gpt-neo research
+        "trl-internal-testing",  # TRL CI fixtures
+        "hmellor",  # random tiny test models
+        "HuggingFaceH4",  # often staging / fixtures
         "transformersbook",
-        "togethercomputer",          # mostly inference endpoints, no GGUFs
+        "togethercomputer",  # mostly inference endpoints, no GGUFs
     }
 )
 
@@ -669,9 +669,7 @@ def rank_models(
         bench_evidence = BenchmarkEvidence(score=None, confidence=0.0, source="none")
         if benchmark_scores or self_reported is not None:
             actual_params_b = (
-                (model.parameter_count or 0) / 1e9
-                if model.parameter_count
-                else None
+                (model.parameter_count or 0) / 1e9 if model.parameter_count else None
             )
             bench_evidence = lookup_benchmark_evidence(
                 model.id,
@@ -691,11 +689,7 @@ def rank_models(
             # different models.
             if bench_evidence.source in ("variant", "base_model", "line_interp"):
                 dom_params = family_dominant_params.get(model.family_id)
-                if (
-                    dom_params
-                    and model.parameter_count
-                    and dom_params > 0
-                ):
+                if dom_params and model.parameter_count and dom_params > 0:
                     ratio = model.parameter_count / dom_params
                     if ratio < 0.5 or ratio > 2.0:
                         bench_evidence = BenchmarkEvidence(

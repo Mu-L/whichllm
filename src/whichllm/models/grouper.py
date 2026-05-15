@@ -108,9 +108,7 @@ def group_models(models: list[ModelInfo]) -> list[ModelFamily]:
         #      own (the original checkpoint).
         #   3. Anything left in the group.
         # Within the chosen tier, pick highest downloads as a tiebreaker.
-        referenced_as_base: set[str] = {
-            m.base_model for m in group if m.base_model
-        }
+        referenced_as_base: set[str] = {m.base_model for m in group if m.base_model}
         upstream_candidates = [m for m in group if m.id in referenced_as_base]
         if upstream_candidates:
             base_candidates = upstream_candidates

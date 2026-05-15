@@ -188,9 +188,7 @@ def create_synthetic_gpu(name: str, vram_override_gb: float | None = None) -> GP
     apple_hit = _lookup_apple_silicon(name)
     if apple_hit is not None:
         canonical, vendor, default_vram_gb, bandwidth = apple_hit
-        vram_gb = (
-            vram_override_gb if vram_override_gb is not None else default_vram_gb
-        )
+        vram_gb = vram_override_gb if vram_override_gb is not None else default_vram_gb
         return GPUInfo(
             name=f"{canonical} (simulated)",
             vendor=vendor,

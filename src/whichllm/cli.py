@@ -443,12 +443,8 @@ def upgrade(
     context_length: int = typer.Option(
         8192, "--context-length", "-c", help="Context length for ranking"
     ),
-    top: int = typer.Option(
-        3, "--top", "-n", help="Best-N models to compare per GPU"
-    ),
-    profile: str = typer.Option(
-        "general", "--profile", help="Ranking profile"
-    ),
+    top: int = typer.Option(3, "--top", "-n", help="Best-N models to compare per GPU"),
+    profile: str = typer.Option("general", "--profile", help="Ranking profile"),
     cpu_only: bool = typer.Option(
         False, "--cpu-only", help="Compare against a CPU-only baseline"
     ),

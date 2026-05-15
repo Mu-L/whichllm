@@ -184,9 +184,7 @@ def test_p2_excluded_orgs_never_rank():
         likes=10,
         gguf_variants=[_gguf("Q4_K_M", 7.0)],
     )
-    results = rank_models(
-        [gpt2, opt, tiny, real], _hw(), top_n=10, benchmark_scores={}
-    )
+    results = rank_models([gpt2, opt, tiny, real], _hw(), top_n=10, benchmark_scores={})
     ids = [r.model.id for r in results]
     assert "openai-community/gpt2" not in ids
     assert "facebook/opt-125m" not in ids
@@ -238,12 +236,15 @@ def test_p2_unknown_family_gets_zero_bonus():
 
 
 def test_p2_derivative_penalty_for_heretic_uncensored():
-    assert _derivative_name_penalty(
-        "diffusionmodels1254ani/gemma-3-12b-it-heretic-v2"
-    ) < 0
-    assert _derivative_name_penalty(
-        "Youssofal/Qwen3.6-27B-Abliterated-Heretic-Uncensored-GGUF"
-    ) < 0
+    assert (
+        _derivative_name_penalty("diffusionmodels1254ani/gemma-3-12b-it-heretic-v2") < 0
+    )
+    assert (
+        _derivative_name_penalty(
+            "Youssofal/Qwen3.6-27B-Abliterated-Heretic-Uncensored-GGUF"
+        )
+        < 0
+    )
     assert _derivative_name_penalty("OBLITERATUS/gemma-4-E4B-it-OBLITERATED") < 0
     assert _derivative_name_penalty("bartowski/Qwen3-32B-GGUF") == 0.0
 
@@ -382,7 +383,11 @@ def test_official_org_safetensors_gets_q4km_synthesis():
     # long as a GGUF candidate is constructed (i.e. the safetensors-only
     # repo is rankable at a realistic quant).
     assert chosen.gguf_variant.quant_type in {
-        "Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0",
+        "Q3_K_M",
+        "Q4_K_M",
+        "Q5_K_M",
+        "Q6_K",
+        "Q8_0",
     }
 
 
@@ -431,8 +436,8 @@ def test_newer_generation_beats_older_at_same_size():
         _hw(vram_gb=24),
         top_n=2,
         benchmark_scores={
-            "Qwen/Qwen3-8B": 56.0,                # current AA/LB-derived
-            "Qwen/Qwen2.5-7B-Instruct": 35.0,     # current source supersedes OLLB
+            "Qwen/Qwen3-8B": 56.0,  # current AA/LB-derived
+            "Qwen/Qwen2.5-7B-Instruct": 35.0,  # current source supersedes OLLB
         },
     )
     assert [r.model.id for r in results][0] == "Qwen/Qwen3-8B"
@@ -445,17 +450,30 @@ def test_speed_estimator_differs_by_quant_and_backend():
     from whichllm.hardware.types import GPUInfo
 
     model = ModelInfo(
-        id="t/x", family_id="t/x", name="x",
-        parameter_count=8_000_000_000, downloads=0,
+        id="t/x",
+        family_id="t/x",
+        name="x",
+        parameter_count=8_000_000_000,
+        downloads=0,
     )
-    q4 = GGUFVariant(filename="x.Q4_K_M.gguf", quant_type="Q4_K_M",
-                     file_size_bytes=int(8e9 * 0.5625))
-    f16 = GGUFVariant(filename="x.F16.gguf", quant_type="F16",
-                      file_size_bytes=int(8e9 * 2.0))
-    cuda = GPUInfo(name="t-nv", vendor="nvidia", vram_bytes=24*1024**3,
-                   memory_bandwidth_gbps=1000.0)
-    metal = GPUInfo(name="t-apple", vendor="apple", vram_bytes=24*1024**3,
-                    memory_bandwidth_gbps=1000.0)
+    q4 = GGUFVariant(
+        filename="x.Q4_K_M.gguf", quant_type="Q4_K_M", file_size_bytes=int(8e9 * 0.5625)
+    )
+    f16 = GGUFVariant(
+        filename="x.F16.gguf", quant_type="F16", file_size_bytes=int(8e9 * 2.0)
+    )
+    cuda = GPUInfo(
+        name="t-nv",
+        vendor="nvidia",
+        vram_bytes=24 * 1024**3,
+        memory_bandwidth_gbps=1000.0,
+    )
+    metal = GPUInfo(
+        name="t-apple",
+        vendor="apple",
+        vram_bytes=24 * 1024**3,
+        memory_bandwidth_gbps=1000.0,
+    )
     q4_cuda = estimate_tok_per_sec(model, q4, cuda, "full_gpu")
     f16_cuda = estimate_tok_per_sec(model, f16, cuda, "full_gpu")
     q4_metal = estimate_tok_per_sec(model, q4, metal, "full_gpu")
@@ -469,11 +487,14 @@ def test_vram_kv_cache_scales_with_context():
     from whichllm.engine.vram import estimate_kv_cache
 
     model = ModelInfo(
-        id="t/x", family_id="t/x", name="x",
-        parameter_count=32_000_000_000, downloads=0,
+        id="t/x",
+        family_id="t/x",
+        name="x",
+        parameter_count=32_000_000_000,
+        downloads=0,
     )
     kv_4k = estimate_kv_cache(model, 4096)
     kv_32k = estimate_kv_cache(model, 32768)
-    assert kv_32k > kv_4k * 7   # near-linear in context length
+    assert kv_32k > kv_4k * 7  # near-linear in context length
     # and the absolute size at 32K should be in the gigabyte range
     assert kv_32k > 2 * 1024**3
