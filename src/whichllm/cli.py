@@ -11,6 +11,7 @@ import typer
 from rich.console import Console
 
 from whichllm.hardware.types import HardwareInfo
+from whichllm.models.types import GGUFVariant, ModelInfo
 
 app = typer.Typer(
     name="llm-checker",
@@ -649,6 +650,81 @@ def _pick_gguf_variant(model, quant_filter: str | None = None):
     return model.gguf_variants[0]
 
 
+def _find_gguf_variant(model: ModelInfo, quant_type: str) -> GGUFVariant | None:
+    for variant in model.gguf_variants:
+        if variant.quant_type.upper() == quant_type.upper():
+            return variant
+    return None
+
+
+def _is_same_model_family(candidate: ModelInfo, selected: ModelInfo) -> bool:
+    if candidate.id == selected.id:
+        return True
+    if candidate.family_id and selected.family_id:
+        if candidate.family_id == selected.family_id:
+            return True
+    if candidate.base_model and candidate.base_model == selected.id:
+        return True
+    if selected.base_model and selected.base_model == candidate.id:
+        return True
+    if candidate.base_model and selected.base_model:
+        return candidate.base_model == selected.base_model
+    return False
+
+
+def _has_compatible_parameter_count(candidate: ModelInfo, selected: ModelInfo) -> bool:
+    if candidate.parameter_count <= 0 or selected.parameter_count <= 0:
+        return True
+    smaller = min(candidate.parameter_count, selected.parameter_count)
+    larger = max(candidate.parameter_count, selected.parameter_count)
+    return (larger / smaller) <= 2.0
+
+
+def _resolve_ranked_gguf_for_run(
+    selected_model: ModelInfo,
+    selected_variant: GGUFVariant,
+    models: list[ModelInfo],
+    quant_filter: str | None = None,
+) -> tuple[ModelInfo, GGUFVariant] | None:
+    """Resolve a ranked GGUF candidate to a real GGUF repo/file for `run`.
+
+    The ranker may synthesize GGUF variants for official safetensors-only repos
+    so they can be scored realistically. `run` cannot execute those synthetic
+    files directly, so it must find a real GGUF sibling before launching.
+    """
+    desired_quant = quant_filter or selected_variant.quant_type
+
+    if selected_model.gguf_variants:
+        variant = _find_gguf_variant(selected_model, desired_quant)
+        return (selected_model, variant) if variant else None
+
+    candidates: list[tuple[bool, int, int, ModelInfo, GGUFVariant]] = []
+    for model in models:
+        if not model.gguf_variants or not _is_same_model_family(model, selected_model):
+            continue
+        if not _has_compatible_parameter_count(model, selected_model):
+            continue
+        variant = _find_gguf_variant(model, desired_quant)
+        if not variant:
+            continue
+        explicit_base = model.base_model == selected_model.id
+        candidates.append(
+            (
+                explicit_base,
+                model.downloads,
+                model.likes,
+                model,
+                variant,
+            )
+        )
+
+    if not candidates:
+        return None
+
+    _, _, _, model, variant = max(candidates, key=lambda item: item[:3])
+    return model, variant
+
+
 def _resolve_model_deps(model, variant) -> tuple[list[str], str]:
     """Determine pip dependencies and script type for a model.
 
@@ -797,6 +873,7 @@ def run(
         models = _load_models(refresh)
         progress.remove_task(task)
 
+    variant = None
     if model_name:
         model = _search_model(models, model_name)
     else:
@@ -820,16 +897,59 @@ def run(
             hardware,
             context_length=context_length,
             top_n=5,
+            quant_filter=quant,
             benchmark_scores=bench_scores,
         )
         if not results:
             console.print("[red]No runnable model found for your hardware.[/]")
             raise typer.Exit(code=1)
-        model = results[0].model
-        if results[0].gguf_variant:
-            quant = quant or results[0].gguf_variant.quant_type
+        skipped_gguf: list[str] = []
+        model = None
+        for ranked in results:
+            if ranked.gguf_variant:
+                resolved = _resolve_ranked_gguf_for_run(
+                    ranked.model,
+                    ranked.gguf_variant,
+                    all_models,
+                    quant_filter=quant,
+                )
+                if resolved:
+                    resolved_model, variant = resolved
+                    if resolved_model.id != ranked.model.id:
+                        console.print(
+                            "[dim]Resolved GGUF runtime: "
+                            f"{ranked.model.id} -> {resolved_model.id} "
+                            f"({variant.quant_type})[/]"
+                        )
+                    model = resolved_model
+                    quant = variant.quant_type
+                    break
+                skipped_gguf.append(ranked.model.id)
+                continue
 
-    variant = _pick_gguf_variant(model, quant)
+            model = ranked.model
+            break
+
+        if skipped_gguf:
+            skipped = ", ".join(skipped_gguf[:3])
+            suffix = "..." if len(skipped_gguf) > 3 else ""
+            console.print(
+                "[yellow]Warning:[/] Skipped GGUF-ranked candidate(s) without "
+                f"a matching runnable GGUF repo: {skipped}{suffix}"
+            )
+        if model is None:
+            console.print(
+                "[red]Error:[/] Top recommendations require GGUF builds, "
+                "but no matching GGUF repos were found."
+            )
+            console.print(
+                "[dim]Try specifying a GGUF model explicitly, for example "
+                '`whichllm run "qwen gguf"`.[/]'
+            )
+            raise typer.Exit(code=1)
+
+    if variant is None:
+        variant = _pick_gguf_variant(model, quant)
     deps, script_type = _resolve_model_deps(model, variant)
     script = _generate_chat_script(model, variant, context_length, cpu_only)
 
