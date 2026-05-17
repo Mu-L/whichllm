@@ -59,6 +59,15 @@ _BACKEND_FACTOR: dict[str, float] = {
     "intel": 0.65,
 }
 
+# MoE decode is partly bandwidth-bound and partly kernel/dispatch-bound.
+# The old fixed 25% read floor matched high-bandwidth CUDA cards reasonably
+# well, but badly under-estimated low-bandwidth unified-memory APUs such as
+# Strix Halo where the active expert reads dominate. Model this as a floor
+# that rises with bandwidth: ~5% at 256 GB/s, capped at the legacy 25%.
+_MOE_REFERENCE_BANDWIDTH_GBPS = 256.0
+_MOE_MIN_READ_RATIO_AT_REFERENCE = 0.05
+_MOE_MAX_READ_RATIO_FLOOR = 0.25
+
 
 def _backend_factor(gpu: GPUInfo) -> float:
     if gpu.vendor in _BACKEND_FACTOR:
@@ -71,6 +80,29 @@ def _quant_efficiency(model: ModelInfo, variant: GGUFVariant | None) -> float:
     if not quant:
         return _DEFAULT_QUANT_EFFICIENCY
     return _QUANT_EFFICIENCY.get(quant.upper(), _DEFAULT_QUANT_EFFICIENCY)
+
+
+def _moe_effective_read_ratio(model: ModelInfo, gpu: GPUInfo) -> float:
+    """Return fraction of stored weights read per generated token for MoE."""
+    if not model.is_moe or not model.parameter_count_active:
+        return 1.0
+    if model.parameter_count <= 0:
+        return 1.0
+
+    active_ratio = model.parameter_count_active / model.parameter_count
+    if active_ratio <= 0:
+        return 1.0
+
+    bandwidth = gpu.memory_bandwidth_gbps or 0.0
+    if bandwidth > 0:
+        floor = _MOE_MIN_READ_RATIO_AT_REFERENCE * max(
+            1.0, bandwidth / _MOE_REFERENCE_BANDWIDTH_GBPS
+        )
+    else:
+        floor = _MOE_MAX_READ_RATIO_FLOOR
+    floor = min(_MOE_MAX_READ_RATIO_FLOOR, floor)
+
+    return min(1.0, max(active_ratio, floor))
 
 
 def estimate_tok_per_sec(
@@ -104,14 +136,10 @@ def estimate_tok_per_sec(
 
     model_size = estimate_weight_bytes(model, variant)
 
-    # MoE: only active params need to be read per token. The router itself
-    # also touches the shared layers, so we don't drop fully to the active
-    # ratio.
+    # MoE: use a speed-specific effective read ratio. VRAM fit still uses
+    # total stored weights elsewhere; this only estimates per-token reads.
     if model.is_moe and model.parameter_count_active:
-        active_ratio = model.parameter_count_active / model.parameter_count
-        # Floor at 0.25: shared layers and routing always cost some bandwidth.
-        active_ratio = max(active_ratio, 0.25)
-        effective_read = model_size * active_ratio
+        effective_read = model_size * _moe_effective_read_ratio(model, gpu)
     else:
         effective_read = model_size
 
